@@ -4,6 +4,7 @@ import click
 import torch
 import numpy as np
 
+from Bio import SeqIO
 
 def load_models(model_dir):
     models = []
@@ -15,7 +16,7 @@ def load_models(model_dir):
 
 def parse_feature(aln_path):
     AMINO = "ACDEFGHIKLMNPQRSTVWY-XBZUOJ"
-    msa = [line.strip() for line in open(aln_path) if not line.startswith(">")]
+    msa = [str(record.seq).upper() for record in SeqIO.parse(aln_path, "fasta")]
     msa = [[AMINO.index(_) for _ in line if _ in AMINO] for line in msa]
     msa = torch.tensor(msa).long()
     msa[msa >= 21] = 20
