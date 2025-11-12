@@ -27,7 +27,7 @@ if [ ! -e $feat ]; then
     exit 1
 fi
 
-echo "Generate structure by gradient decent-----------------------------------"
+echo "Generate structure by gradient descent----------------------------------"
 $BINROOT/folding/run_builder.py \
     -i $fasta \
     -f $feat \
