@@ -1,0 +1,4 @@
+db/
+example/
+__pycache__
+*.whl
