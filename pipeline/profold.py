@@ -1,17 +1,17 @@
 import os
 import subprocess
 
-def run(aln_file: str, output_dir="predictions", log_func=None):
+def run_profold(root_dir: str, fasta_file: str, output_dir: str = None):
     """
     Run ProFOLD and stream output to both GUI and optionally a log file.
     """
-    profold_script = "./run_ProFOLD.sh"
+    profold_script = os.path.join(root_dir, "run_ProFOLD.sh")
+    if not output_dir: output_dir = os.path.join(root_dir, "predictions")
     os.makedirs(output_dir, exist_ok=True)
-    if log_func:
-        log_func(f"Running ProFOLD: {profold_script} {aln_file} {output_dir}")
+    print(f"Running ProFOLD: {profold_script} {fasta_file} {output_dir}")
 
     process = subprocess.Popen(
-        [profold_script, aln_file, output_dir],
+        [profold_script, fasta_file, output_dir],
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         universal_newlines=True,
@@ -19,21 +19,18 @@ def run(aln_file: str, output_dir="predictions", log_func=None):
     )
 
     # Stream output line by line
-    if log_func:
-        for line in process.stdout:
-            line = line.rstrip()
-            log_func(line)
+    for line in process.stdout:
+        line = line.rstrip()
+        print(line)
 
     process.stdout.close()
     return_code = process.wait()
 
     if return_code != 0:
-        if log_func:
-            log_func(f"ProFOLD failed. Return code: {return_code}")
+        print(f"ProFOLD failed. Return code: {return_code}")
         raise RuntimeError(f"ProFOLD failed.")
 
-    if log_func:
-        log_func(f"ProFOLD completed successfully.")
+    print(f"ProFOLD completed successfully.")
 
     return output_dir
 

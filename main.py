@@ -1,4 +1,5 @@
 import os, sys, threading
+from multiprocessing import Process, Queue
 from PyQt6.QtWidgets import (
     QApplication,
     QMainWindow,
@@ -9,19 +10,22 @@ from PyQt6.QtWidgets import (
     QLabel,
     QTextEdit,
     QLineEdit,
-    QHBoxLayout
+    QHBoxLayout,
+    QMessageBox,
 )
-
+from PyQt6.QtCore import QProcess, Qt
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 import qdarkstyle
 
-from Bio import SeqIO
 import py3Dmol
+import pipeline
 
-import pipeline.database as db
-import pipeline.search as search
-import pipeline.align as align
-import pipeline.profold as profold
+root_dir = os.path.dirname(os.path.abspath(__file__))
+work_dir = os.path.join(root_dir, "work_dir")
+log_dir = os.path.join(work_dir, "log")
+
+os.makedirs(work_dir, exist_ok=True)
+os.makedirs(log_dir, exist_ok=True)
 
 class ProteinViewer(QMainWindow):
     def __init__(self):
@@ -52,18 +56,18 @@ class ProteinViewer(QMainWindow):
         layout.addWidget(self.db_label)
 
         db_layout = QHBoxLayout()
-        self.db_button = QPushButton("Select BLAST Database")
+        self.db_button = QPushButton("Select Database Prefix")
         self.db_button.clicked.connect(self.pick_database)
         db_layout.addWidget(self.db_button)
         layout.addLayout(db_layout)
 
-
         self.run_button = QPushButton("Run MSA Pipeline")
-        self.run_button.clicked.connect(self.run_pipeline_threaded)
+        self.run_button.clicked.connect(self.run_pipeline_process)
         layout.addWidget(self.run_button)
 
         self.stop_button = QPushButton("Stop Pipeline")
-        # self.stop_button.clicked.connect(self.stop_pipeline)
+        self.stop_button.clicked.connect(self.stop_pipeline)
+        self.stop_button.setEnabled(False)
         layout.addWidget(self.stop_button)
 
         self.status_output = QTextEdit()
@@ -71,8 +75,13 @@ class ProteinViewer(QMainWindow):
         layout.addWidget(self.status_output)
 
         self.seq_file = None
-        self.db_file = None
-        self.pipeline_thread = None
+        self.db_prefix = None
+        self.pipeline_proc = None
+        try:
+            self.log_file = open(os.path.join(log_dir, "pipeline.log"), 'w')
+        except OSError:
+            self.log_file = None
+            self.log("Could not write to file:", fname)
 
         # Button to load PDB
         # self.load_button = QPushButton("Load PDB")
@@ -85,25 +94,62 @@ class ProteinViewer(QMainWindow):
 
     def pick_file(self):
         file_path, _ = QFileDialog.getOpenFileName(
-            self, "Open FASTA File", "", "FASTA or GZIP Files (*.fasta *.fa *.fna *.gz);;All Files (*)"
+            self, "Open FASTA File", "", "(*.fasta *.fa *.fna *.aln);;All Files (*)"
         )
         if file_path:
             self.seq_file = file_path
-            self.file_label.setText(f"Selected: {file_path}")
+            self.file_label.setText(f"Sequence file: {file_path}")
+        else:
+            self.seq_file = None
+            self.file_label.setText("No sequence file selected")
 
     def pick_database(self):
-        db_file, _ = QFileDialog.getOpenFileName(
-            self, "Open BLAST Database File", "", 
-            "FASTA or gzipped FASTA (*.fasta *.fa *.fna *.gz);;All Files (*)"
+        # Ask user to pick any file in the HHblits database
+        db_prefix, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select any HHblits DB file (e.g. pdb100_a3m.ffdata)",
+            "",
+            "HHsuite files (*.ffdata *.ffindex)"
         )
-        if db_file:
-            self.db_file = db_file
-            self.db_label.setText(f"Selected: {db_file}")
+
+        if not db_prefix:
+            return
+
+        # Determine prefix by stripping known HHblits suffixes
+        suffixes = [
+            "_a3m.ffdata", "_a3m.ffindex",
+            "_cs219.ffdata", "_cs219.ffindex",
+            "_hhm.ffdata", "_hhm.ffindex"
+        ]
+        prefix = None
+        for suf in suffixes:
+            if db_prefix.endswith(suf):
+                prefix = db_prefix[: -len(suf)]
+                break
+
+        if not prefix:
+            QMessageBox.warning(self, "Error", "Not a valid HHblits database file!")
+            return
+
+        # Check required files exist
+        required_files = [prefix + s for s in suffixes]
+        missing = [str(f) for f in required_files if not os.path.exists(f)]
+
+        if missing:
+            QMessageBox.warning(
+                self,
+                "Missing files",
+                "The following required HHblits DB files are missing:\n" + "\n".join(missing)
+            )
+            return
+
+        self.db_prefix = prefix
+        self.db_label.setText(f"HHblits database prefix: {prefix}")
 
     def load_pdb(self):
-        pdb_file, _ = QFileDialog.getOpenFileName(self, "Open PDB File", "", "PDB Files (*.pdb)")
-        if pdb_file:
-            with open(pdb_file, 'r') as f:
+        pdb_prefix, _ = QFileDialog.getOpenFileName(self, "Open PDB File", "", "PDB Files (*.pdb)")
+        if pdb_prefix:
+            with open(pdb_prefix, 'r') as f:
                 pdb_str = f.read()
 
             # Create py3Dmol HTML
@@ -115,89 +161,69 @@ class ProteinViewer(QMainWindow):
 
             html = view._make_html()
             self.web_view.setHtml(html)
+
     def log(self, msg):
+        if self.log_file:
+            self.log_file.write(msg)
+            self.log_file.write('\n')
+            self.log_file.flush()
         self.status_output.append(msg)
         QApplication.processEvents()  # update GUI
-
-    def run_pipeline_threaded(self):
-        if self.pipeline_thread and self.pipeline_thread.is_alive():
-            self.log("Pipeline already running, please stop it before start a new one.")
+    
+    def run_pipeline_process(self):
+        if self.pipeline_proc and self.pipeline_proc.poll() is None:
             return
-        self.pipeline_thread = threading.Thread(target=self.run_pipeline, daemon=True)
-        self.pipeline_thread.start()
-
-    def run_pipeline(self):
-        # --- Prepare query file ---
         if self.seq_file:
             query_file = self.seq_file
         elif self.seq_input.toPlainText().strip():
-            query_file = "temp_query.fasta"
+            query_file = os.path.join(work_dir, "seq.fasta")
             with open(query_file, "w") as f:
                 f.write(self.seq_input.toPlainText())
         else:
             self.log("No sequence input provided.")
             return
 
-        if not self.db_file:
+        if not self.db_prefix:
             self.log("No database selected!")
             return
 
-        self.log(f"Preparing BLAST database: {self.db_file} ...")
-        try:
-            blast_db = db.prepare_blast_db(self.db_file)
-            self.log(f"Database ready: {blast_db}")
-        except Exception as e:
-            self.log(f"Database error: {e}")
-            return
+        self.pipeline_proc = QProcess(self)
+        self.pipeline_proc.setProcessChannelMode(QProcess.ProcessChannelMode.MergedChannels)
 
-        # --- Run BLAST search ---
-        self.log("Running BLAST search...")
-        try:
-            hits = search.blast_search(query_file, blast_db, top_hits=10)
-            self.log(f"Top hits: {hits}")
-        except Exception as e:
-            self.log(f"BLAST error: {e}")
-            return
+        self.pipeline_proc.readyReadStandardOutput.connect(self.handle_stdout)
+        self.pipeline_proc.finished.connect(self.on_pipeline_finished)
 
-        # --- Extract sequences ---
-        self.log("Extracting hit sequences...")
+        # Start the process (replace with your Python command or shell script)
+        cmd = ["python3", "-u", "-c",
+               f"import pipeline; pipeline.run_pipeline('{root_dir}', '{work_dir}', '{log_dir}', '{query_file}', '{self.db_prefix}', top_hits=200)"]
 
-        # Use the original FASTA, decompressed if needed
-        if self.db_file.endswith(".gz"):
-            import gzip, shutil
-            fasta_for_db = os.path.splitext(self.db_file)[0]  # remove .gz
-            if not os.path.exists(fasta_for_db):
-                with gzip.open(self.db_file, "rt") as f_in, open(fasta_for_db, "w") as f_out:
-                    shutil.copyfileobj(f_in, f_out)
-        else:
-            fasta_for_db = self.db_file
+        self.log(f"Starting pipeline: {' '.join(cmd)}")
+        self.pipeline_proc.start(cmd[0], cmd[1:])
 
-        # Parse sequences from the actual FASTA file
-        records = [r for r in SeqIO.parse(fasta_for_db, "fasta") if r.id in hits]
+        self.run_button.setEnabled(False)
+        self.stop_button.setEnabled(True)
 
-        if not records:
-            self.log("No hits found.")
-            return
+    def handle_stdout(self):
+        data = self.pipeline_proc.readAllStandardOutput().data().decode()
+        for line in data.splitlines():
+            self.log(line)
 
-        hits_file = "hits.fasta"
-        SeqIO.write(records, hits_file, "fasta")
-        self.log(f"Extracted {len(records)} sequences -> {hits_file}")
+    def stop_pipeline(self):
+        if self.pipeline_proc and self.pipeline_proc.state() != QProcess.ProcessState.NotRunning:
+            self.pipeline_proc.kill()  # hard kill
+            self.pipeline_proc = None
+            self.log("Pipeline process killed by user.")
+            self.run_button.setEnabled(True)
+            self.stop_button.setEnabled(False)
+    
+    def on_pipeline_finished(self, exitCode, exitStatus):
+        self.log(f"Pipeline finished with code {exitCode}")
+        self.run_button.setEnabled(True)
+        self.stop_button.setEnabled(False)
 
-        # --- Run MAFFT ---
-        self.log("Running MAFFT alignment...")
-        alignment_fasta = "aligned.fasta"
-        try:
-            alignment = align.run_mafft(hits_file, alignment_fasta)
-            self.log(f"Alignment complete: {len(alignment)} sequences, length {alignment.get_alignment_length()}")
-            self.log(f"MSA exported to '{alignment_fasta}'")
-        except Exception as e:
-            self.log(f"MAFFT error: {e}")
-            return
-
-        aln_file, aln_content = align.write_aln_file(alignment_fasta, "hits.aln")
-        self.log(f"Write {len(aln_content)} sequences to {aln_file}")
-
-        profold.run(aln_file, output_dir="predictions", log_func=self.log)
+    def closeEvent(self, event):
+        self.stop_pipeline()
+        event.accept()
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)

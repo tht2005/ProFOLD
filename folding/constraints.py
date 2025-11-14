@@ -4,10 +4,10 @@ import pyrosetta
 
 
 class Constraints:
-    def __init__(self, seq, feat_path):
+    def __init__(self, seq, feat_path, tmp_prefix="/dev/shm/"):
         self._seq = seq
         self._feat = np.load(feat_path)
-        self._tmp_dir = tempfile.TemporaryDirectory(prefix="/dev/shm/")
+        self._tmp_dir = tempfile.TemporaryDirectory(prefix=tmp_prefix)
 
         self._raw_constraints = self._init_constraints()
 
