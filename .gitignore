@@ -2,3 +2,6 @@ db/
 example/
 __pycache__
 *.whl
+
+predictions*/
+work_dir/
