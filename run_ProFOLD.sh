@@ -1,5 +1,9 @@
 #!/bin/bash
 
+n_workers=8
+n_structs=20
+n_iter=100
+
 if [ $# != 2 ]; then
     echo "Usage $0 <MSA> <output_dir>"
     exit 1
@@ -13,8 +17,10 @@ target="${_filename%.*}"
 fasta=$outdir/$target.fasta
 
 mkdir -p $outdir
+
 echo ">$target" > $fasta
-head -1 $aln >> $fasta
+# head -1 $aln >> $fasta
+python3 "$BINROOT/scripts/first_seq.py" "$aln" >> "$fasta"
 
 echo "Predict distance--------------------------------------------------------"
 $BINROOT/distance_prediction/run_inference.py \
@@ -32,9 +38,9 @@ $BINROOT/folding/run_builder.py \
     -i $fasta \
     -f $feat \
     -o $outdir \
-    --n_workers 24 \
-    --n_structs 20 \
-    --n_iter 100
+    --n_workers $n_workers \
+    --n_structs $n_structs \
+    --n_iter $n_iter
 
 echo "Full-atom relax---------------------------------------------------------"
 $BINROOT/folding/run_relax.py \
@@ -42,7 +48,7 @@ $BINROOT/folding/run_relax.py \
     -f $feat \
     -i $outdir/final \
     -o $outdir/relax \
-    --n_workers 24
+    --n_workers $n_workers
 
 echo "Ranking decoy-----------------------------------------------------------"
 ls $outdir/relax/*.pdb | while read LINE; do
