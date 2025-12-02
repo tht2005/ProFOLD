@@ -4,15 +4,15 @@ from .profold import *
 import os
 from Bio import SeqIO
 
-def run_pipeline(root_dir, work_dir, log_dir, query_file, db_prefix, top_hits=None):
+def run_pipeline(root_dir, work_dir, log_dir, query_file, db_prefix, hit_seqs, top_hits, n_worker, n_struct, n_iter):
 
     output_prefix = os.path.join(work_dir, "query")
 
-    a3m_file = run_hhblits(log_dir, query_file, db_prefix, output_prefix)
+    a3m_file = run_hhblits(log_dir, query_file, db_prefix, output_prefix, maxseq=hit_seqs)
     records = list(SeqIO.parse(a3m_file, "fasta"))
 
-    if not top_hits:
-        top_hits = len(records)
+    # if not top_hits:
+    #     top_hits = len(records)
     top_hits = min(top_hits, len(records) - 1)
 
     top_records = records[1:1+top_hits]

@@ -4,6 +4,7 @@ from PyQt6.QtWidgets import (
     QApplication,
     QMainWindow,
     QWidget,
+    QGroupBox,
     QVBoxLayout,
     QPushButton,
     QFileDialog,
@@ -30,6 +31,14 @@ log_dir = os.path.join(work_dir, "log")
 
 os.makedirs(work_dir, exist_ok=True)
 os.makedirs(log_dir, exist_ok=True)
+
+class cfg:
+    N_HIT_SEQS = 500
+    N_TOP_HITS = 350
+
+    N_WORKER = 8
+    N_STRUCT = 20
+    N_ITER = 100
 
 class ProteinViewer(QMainWindow):
     def __init__(self):
@@ -116,9 +125,19 @@ class ProteinViewer(QMainWindow):
         return layout
 
     def config_tab_ui(self, central_widget):
-        import pipeline.config as cfg
+        main_layout = QFormLayout(central_widget)
 
-        layout = QFormLayout(central_widget)
+        group1 = QGroupBox("MSA alignment")
+        group1_layout = QFormLayout(group1)
+        main_layout.addWidget(group1)
+
+        self.sb_hit_seqs = QSpinBox(central_widget)
+        self.sb_hit_seqs.setRange(1, 5000)
+        self.sb_hit_seqs.setValue(cfg.N_HIT_SEQS)
+        self.sb_hit_seqs.valueChanged.connect(
+            lambda v: setattr(cfg, "N_HIT_SEQS", v)
+        )
+        group1_layout.addRow("N_HIT_SEQS:", self.sb_hit_seqs)
 
         self.sb_top_hits = QSpinBox(central_widget)
         self.sb_top_hits.setRange(1, 5000)
@@ -126,7 +145,11 @@ class ProteinViewer(QMainWindow):
         self.sb_top_hits.valueChanged.connect(
             lambda v: setattr(cfg, "N_TOP_HITS", v)
         )
-        layout.addRow("N_TOP_HITS:", self.sb_top_hits)
+        group1_layout.addRow("N_TOP_HITS:", self.sb_top_hits)
+
+        group2 = QGroupBox("ProFOLD")
+        group2_layout = QFormLayout(group2)
+        main_layout.addWidget(group2)
 
         self.sb_worker = QSpinBox(central_widget)
         self.sb_worker.setRange(1, 128)
@@ -134,7 +157,7 @@ class ProteinViewer(QMainWindow):
         self.sb_worker.valueChanged.connect(
             lambda v: setattr(cfg, "N_WORKER", v)
         )
-        layout.addRow("N_WORKER:", self.sb_worker)
+        group2_layout.addRow("N_WORKER:", self.sb_worker)
 
         self.sb_struct = QSpinBox(central_widget)
         self.sb_struct.setRange(1, 2000)
@@ -142,7 +165,7 @@ class ProteinViewer(QMainWindow):
         self.sb_struct.valueChanged.connect(
             lambda v: setattr(cfg, "N_STRUCT", v)
         )
-        layout.addRow("N_STRUCT:", self.sb_struct)
+        group2_layout.addRow("N_STRUCT:", self.sb_struct)
 
         self.sb_iter = QSpinBox(central_widget)
         self.sb_iter.setRange(1, 100000)
@@ -150,9 +173,9 @@ class ProteinViewer(QMainWindow):
         self.sb_iter.valueChanged.connect(
             lambda v: setattr(cfg, "N_ITER", v)
         )
-        layout.addRow("N_ITER:", self.sb_iter)
+        group2_layout.addRow("N_ITER:", self.sb_iter)
 
-        return layout
+        return main_layout
 
     def pick_file(self):
         file_path, _ = QFileDialog.getOpenFileName(
@@ -257,7 +280,10 @@ class ProteinViewer(QMainWindow):
 
         # Start the process (replace with your Python command or shell script)
         cmd = ["python3", "-u", "-c",
-               f"import pipeline; pipeline.run_pipeline('{root_dir}', '{work_dir}', '{log_dir}', '{query_file}', '{self.db_prefix}', top_hits=350)"]
+            f"import pipeline; pipeline.run_pipeline('{root_dir}', '{work_dir}', \
+            '{log_dir}', '{query_file}', '{self.db_prefix}', \
+            hit_seqs={cfg.N_HIT_SEQS}, top_hits={cfg.N_TOP_HITS}, \
+            n_worker={cfg.N_WORKER}, n_struct={cfg.N_STRUCT}, n_iter={cfg.N_ITER})"]
 
         self.log(f"Starting pipeline: {' '.join(cmd)}")
         self.pipeline_proc.start(cmd[0], cmd[1:])

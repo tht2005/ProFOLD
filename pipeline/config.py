@@ -1,7 +1,0 @@
-# Section MSA
-N_TOP_HITS = 350
-
-# Section ProFOLD
-N_WORKER = 8
-N_STRUCT = 20
-N_ITER = 100
