@@ -11,46 +11,46 @@ fi
 
 BINROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 aln=$1
-outdir=$(readlink -f $2)
+outdir=$(readlink -f "$2")
 _filename=$(basename -- "$aln")
 target="${_filename%.*}"
 fasta=$outdir/$target.fasta
 
-mkdir -p $outdir
+mkdir -p "$outdir"
 
-echo ">$target" > $fasta
+echo ">$target" > "$fasta"
 # head -1 $aln >> $fasta
 python3 "$BINROOT/scripts/first_seq.py" "$aln" >> "$fasta"
 
 echo "Predict distance--------------------------------------------------------"
-$BINROOT/distance_prediction/run_inference.py \
-    -m $BINROOT/distance_prediction/model \
-    -i $aln \
-    -o $outdir/$target.npz
+"$BINROOT/distance_prediction/run_inference.py" \
+    -m "$BINROOT/distance_prediction/model" \
+    -i "$aln" \
+    -o "$outdir/$target.npz"
 feat=$outdir/$target.npz
-if [ ! -e $feat ]; then
+if [ ! -e "$feat" ]; then
     echo "Predict distance failed... Stop"
     exit 1
 fi
 
 echo "Generate structure by gradient descent----------------------------------"
-$BINROOT/folding/run_builder.py \
-    -i $fasta \
-    -f $feat \
-    -o $outdir \
+"$BINROOT/folding/run_builder.py" \
+    -i "$fasta" \
+    -f "$feat" \
+    -o "$outdir" \
     --n_workers $n_workers \
     --n_structs $n_structs \
     --n_iter $n_iter
 
 echo "Full-atom relax---------------------------------------------------------"
-$BINROOT/folding/run_relax.py \
-    -s $fasta \
-    -f $feat \
-    -i $outdir/final \
-    -o $outdir/relax \
+"$BINROOT/folding/run_relax.py" \
+    -s "$fasta" \
+    -f "$feat" \
+    -i "$outdir/final" \
+    -o "$outdir/relax" \
     --n_workers $n_workers
 
 echo "Ranking decoy-----------------------------------------------------------"
-ls $outdir/relax/*.pdb | while read LINE; do
-    echo $LINE $(grep "^pose" $LINE | awk '{print $NF}')
-done | sort -k 2 -n > $outdir/rank.txt
+find "$outdir/relax" -name '*.pdb' | while read -r LINE; do
+    echo "$LINE" "$(grep "^pose" "$LINE" | awk '{print $NF}')"
+done | sort -k 2 -n > "$outdir/rank.txt"
