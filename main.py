@@ -12,8 +12,12 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QHBoxLayout,
     QMessageBox,
+    QTabWidget,
+    QFormLayout,
+    QSpinBox,
 )
 from PyQt6.QtCore import QProcess, Qt
+from PyQt6.QtGui import QGuiApplication
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 import qdarkstyle
 
@@ -33,8 +37,34 @@ class ProteinViewer(QMainWindow):
         self.setWindowTitle("Protein 3D Structure Prediction Pipeline")
         self.setGeometry(100, 100, 800, 600)
 
-        central_widget = QWidget()
-        self.setCentralWidget(central_widget)
+        tabs = QTabWidget()
+        self.setCentralWidget(tabs)
+
+        tab1 = QWidget()
+        tab2 = QWidget()
+        tab3 = QWidget()
+
+        self.pipeline_tab_ui(tab1)
+        self.show_model_tab_ui(tab2)
+        self.config_tab_ui(tab3)
+
+        tabs.addTab(tab1, "pipeline")
+        tabs.addTab(tab2, "preview")
+        tabs.addTab(tab3, "config")
+
+    def show_model_tab_ui(self, central_widget):
+        layout = QVBoxLayout(central_widget)
+
+        self.load_button = QPushButton("Load PDB")
+        self.load_button.clicked.connect(self.load_pdb)
+        layout.addWidget(self.load_button)
+
+        self.web_view = QWebEngineView()
+        layout.addWidget(self.web_view)
+
+        return layout
+
+    def pipeline_tab_ui(self, central_widget):
         layout = QVBoxLayout(central_widget)
 
         self.file_label = QLabel("No sequence file selected")
@@ -83,14 +113,46 @@ class ProteinViewer(QMainWindow):
             self.log_file = None
             self.log("Could not write to file:", fname)
 
-        # Button to load PDB
-        # self.load_button = QPushButton("Load PDB")
-        # self.load_button.clicked.connect(self.load_pdb)
-        # layout.addWidget(self.load_button)
+        return layout
 
-        # WebEngineView for 3Dmol
-        # self.web_view = QWebEngineView()
-        # layout.addWidget(self.web_view)
+    def config_tab_ui(self, central_widget):
+        import pipeline.config as cfg
+
+        layout = QFormLayout(central_widget)
+
+        self.sb_top_hits = QSpinBox(central_widget)
+        self.sb_top_hits.setRange(1, 5000)
+        self.sb_top_hits.setValue(cfg.N_TOP_HITS)
+        self.sb_top_hits.valueChanged.connect(
+            lambda v: setattr(cfg, "N_TOP_HITS", v)
+        )
+        layout.addRow("N_TOP_HITS:", self.sb_top_hits)
+
+        self.sb_worker = QSpinBox(central_widget)
+        self.sb_worker.setRange(1, 128)
+        self.sb_worker.setValue(cfg.N_WORKER)
+        self.sb_worker.valueChanged.connect(
+            lambda v: setattr(cfg, "N_WORKER", v)
+        )
+        layout.addRow("N_WORKER:", self.sb_worker)
+
+        self.sb_struct = QSpinBox(central_widget)
+        self.sb_struct.setRange(1, 2000)
+        self.sb_struct.setValue(cfg.N_STRUCT)
+        self.sb_struct.valueChanged.connect(
+            lambda v: setattr(cfg, "N_STRUCT", v)
+        )
+        layout.addRow("N_STRUCT:", self.sb_struct)
+
+        self.sb_iter = QSpinBox(central_widget)
+        self.sb_iter.setRange(1, 100000)
+        self.sb_iter.setValue(cfg.N_ITER)
+        self.sb_iter.valueChanged.connect(
+            lambda v: setattr(cfg, "N_ITER", v)
+        )
+        layout.addRow("N_ITER:", self.sb_iter)
+
+        return layout
 
     def pick_file(self):
         file_path, _ = QFileDialog.getOpenFileName(
@@ -195,7 +257,7 @@ class ProteinViewer(QMainWindow):
 
         # Start the process (replace with your Python command or shell script)
         cmd = ["python3", "-u", "-c",
-               f"import pipeline; pipeline.run_pipeline('{root_dir}', '{work_dir}', '{log_dir}', '{query_file}', '{self.db_prefix}', top_hits=200)"]
+               f"import pipeline; pipeline.run_pipeline('{root_dir}', '{work_dir}', '{log_dir}', '{query_file}', '{self.db_prefix}', top_hits=350)"]
 
         self.log(f"Starting pipeline: {' '.join(cmd)}")
         self.pipeline_proc.start(cmd[0], cmd[1:])
@@ -226,6 +288,7 @@ class ProteinViewer(QMainWindow):
         event.accept()
 
 if __name__ == "__main__":
+    QGuiApplication.setDesktopFileName("com.github.tht2005.profold")
     app = QApplication(sys.argv)
     app.setApplicationName("ProteinViewer")
     app.setApplicationDisplayName("Protein 3D Viewer")
