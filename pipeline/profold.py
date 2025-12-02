@@ -1,7 +1,8 @@
 import os
 import subprocess
 
-def run_profold(root_dir: str, fasta_file: str, output_dir: str = None):
+def run_profold(root_dir: str, fasta_file: str, n_worker: int, n_struct: int,
+                n_iter: int, output_dir: str = None):
     """
     Run ProFOLD and stream output to both GUI and optionally a log file.
     """
@@ -11,7 +12,7 @@ def run_profold(root_dir: str, fasta_file: str, output_dir: str = None):
     print(f"Running ProFOLD: {profold_script} {fasta_file} {output_dir}")
 
     process = subprocess.Popen(
-        [profold_script, fasta_file, output_dir],
+        [profold_script, fasta_file, output_dir, n_worker, n_struct, n_iter],
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         universal_newlines=True,

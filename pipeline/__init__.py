@@ -24,4 +24,4 @@ def run_pipeline(root_dir, work_dir, log_dir, query_file, db_prefix, hit_seqs, t
     aln_file = f"{output_prefix}.aln"
     a3m_to_aln(log_dir, query_file, top_a3m_file, aln_file)
 
-    profold.run_profold(root_dir, aln_file)
+    profold.run_profold(root_dir, aln_file, n_worker=n_worker, n_struct=n_struct, n_iter=n_iter)

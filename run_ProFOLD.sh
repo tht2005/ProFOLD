@@ -1,10 +1,6 @@
 #!/bin/bash
 
-n_workers=8
-n_structs=20
-n_iter=100
-
-if [ $# != 2 ]; then
+if [ $# -le 2 ]; then
     echo "Usage $0 <MSA> <output_dir>"
     exit 1
 fi
@@ -15,6 +11,10 @@ outdir=$(readlink -f "$2")
 _filename=$(basename -- "$aln")
 target="${_filename%.*}"
 fasta=$outdir/$target.fasta
+
+n_workers=${3:-8}
+n_structs=${4:-20}
+n_iter=${5:-100}
 
 mkdir -p "$outdir"
 
